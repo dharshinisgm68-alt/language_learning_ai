@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 language_learning.db
 venv/
+firebase_key.json
