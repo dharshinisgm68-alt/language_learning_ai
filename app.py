@@ -1,222 +1,473 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
+````python
+from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 from google import genai
-import sqlite3, os, random
+import sqlite3
+import os
+import json
 
 load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-this-secret-key")
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Gemini AI
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=GEMINI_API_KEY)
 MODEL = "gemini-2.5-flash"
+
+# Database
 DB = "language_learning.db"
 
-LANGUAGES = ["English", "Tamil", "Hindi", "Malayalam", "Telugu", "Kannada"]
-LEVELS = ["Beginner", "Intermediate", "Advanced"]
+LANGUAGES = [
+    "English",
+    "Tamil",
+    "Hindi",
+    "Malayalam",
+    "Telugu",
+    "Kannada"
+]
+
+LEVELS = [
+    "Beginner",
+    "Intermediate",
+    "Advanced"
+]
+
+
+# ---------------- DATABASE ----------------
 
 def db():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
     return con
 
+
 def init_db():
     con = db()
+
     con.executescript("""
-    CREATE TABLE IF NOT EXISTS users(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        language TEXT DEFAULT 'English',
-        level TEXT DEFAULT 'Beginner'
-    );
-    CREATE TABLE IF NOT EXISTS vocabulary(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        word TEXT,
-        meaning TEXT,
-        example TEXT,
-        learned INTEGER DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS quiz_scores(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        score INTEGER,
-        total INTEGER,
-        topic TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS activities(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        feature TEXT,
-        details TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+        CREATE TABLE IF NOT EXISTS activities(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            language TEXT,
+            level TEXT,
+            feature TEXT,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS quiz_scores(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            language TEXT,
+            level TEXT,
+            score INTEGER,
+            total INTEGER,
+            topic TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS vocabulary(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            language TEXT,
+            level TEXT,
+            word TEXT,
+            meaning TEXT,
+            example TEXT,
+            learned INTEGER DEFAULT 0
+        );
     """)
+
     con.commit()
     con.close()
 
-def current_user():
-    return session.get("user_id")
+
+# ---------------- HOME ----------------
 
 @app.route("/")
 def index():
-    return render_template("index.html", user=session.get("username"))
+    return render_template("index.html")
 
-@app.post("/register")
-def register():
-    data = request.json
-    username = data.get("username","").strip()
-    password = data.get("password","")
-    if not username or not password:
-        return jsonify(error="Username and password are required."), 400
-    con = db()
-    try:
-        cur = con.execute(
-            "INSERT INTO users(username,password) VALUES(?,?)",
-            (username, generate_password_hash(password))
-        )
-        con.commit()
-        session["user_id"] = cur.lastrowid
-        session["username"] = username
-        return jsonify(ok=True)
-    except sqlite3.IntegrityError:
-        return jsonify(error="Username already exists."), 409
-    finally:
-        con.close()
 
-@app.post("/login")
-def login():
-    data = request.json
-    con = db()
-    user = con.execute("SELECT * FROM users WHERE username=?", (data.get("username",""),)).fetchone()
-    con.close()
-    if not user or not check_password_hash(user["password"], data.get("password","")):
-        return jsonify(error="Invalid username or password."), 401
-    session["user_id"] = user["id"]
-    session["username"] = user["username"]
-    return jsonify(ok=True)
-
-@app.post("/logout")
-def logout():
-    session.clear()
-    return jsonify(ok=True)
-
-@app.get("/me")
-def me():
-    if not current_user():
-        return jsonify(logged_in=False)
-    con = db()
-    user = con.execute("SELECT id,username,language,level FROM users WHERE id=?", (current_user(),)).fetchone()
-    con.close()
-    return jsonify(logged_in=True, **dict(user))
-
-@app.post("/profile")
-def profile():
-    if not current_user(): return jsonify(error="Login required."), 401
-    data = request.json
-    language = data.get("language","English")
-    level = data.get("level","Beginner")
-    if language not in LANGUAGES or level not in LEVELS:
-        return jsonify(error="Invalid language or level."), 400
-    con = db()
-    con.execute("UPDATE users SET language=?, level=? WHERE id=?", (language, level, current_user()))
-    con.commit(); con.close()
-    return jsonify(ok=True)
+# ---------------- GEMINI AI ----------------
 
 def ask_ai(prompt):
-    response = client.models.generate_content(model=MODEL, contents=prompt)
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=prompt
+    )
+
     return response.text
+
+
+# ---------------- CHAT ----------------
 
 @app.post("/chat")
 def chat():
-    if not current_user(): return jsonify(error="Please login first."), 401
-    data = request.json
-    message = data.get("message","")
-    feature = data.get("feature","Conversation")
-    con = db()
-    user = con.execute("SELECT language,level FROM users WHERE id=?", (current_user(),)).fetchone()
-    con.close()
-    prompt = f"""You are a professional AI Language Learning Assistant.
-Target language: {user['language']}
-Student level: {user['level']}
-Feature: {feature}
-Student message: {message}
 
-Give a helpful, student-friendly response.
-For Grammar: show corrected sentence and short explanation.
-For Vocabulary: give word, meaning, pronunciation and example.
-For Translation: translate naturally and explain difficult words.
-For Conversation: continue the conversation and gently correct important mistakes.
-For Pronunciation: provide simple pronunciation guidance.
-For Lesson: create a lesson suitable for the student's level.
-Do not claim that audio was generated; the browser handles speech output."""
+    data = request.get_json() or {}
+
+    message = data.get("message", "").strip()
+    feature = data.get("feature", "Conversation")
+    language = data.get("language", "English")
+    level = data.get("level", "Beginner")
+
+    if not message:
+        return jsonify(
+            error="Please enter a message."
+        ), 400
+
+    if language not in LANGUAGES:
+        return jsonify(
+            error="Invalid language."
+        ), 400
+
+    if level not in LEVELS:
+        return jsonify(
+            error="Invalid level."
+        ), 400
+
+    prompt = f"""
+You are a professional AI Language Learning Assistant.
+
+Target language: {language}
+
+Student level: {level}
+
+Feature: {feature}
+
+Student message:
+{message}
+
+Give a helpful and student-friendly response.
+
+For Grammar:
+Correct the sentence and explain the mistake briefly.
+
+For Vocabulary:
+Give the word, meaning, pronunciation and example.
+
+For Translation:
+Translate naturally and explain difficult words.
+
+For Conversation:
+Continue the conversation and gently correct important mistakes.
+
+For Pronunciation:
+Give simple pronunciation guidance.
+
+For Lesson:
+Create a lesson suitable for the student's level.
+
+Do not claim that audio was generated.
+The browser handles speech output.
+"""
+
     try:
+
         answer = ask_ai(prompt)
+
         con = db()
-        con.execute("INSERT INTO activities(user_id,feature,details) VALUES(?,?,?)",
-                    (current_user(), feature, message))
-        con.commit(); con.close()
-        return jsonify(answer=answer)
+
+        con.execute(
+            """
+            INSERT INTO activities
+            (language, level, feature, details)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                language,
+                level,
+                feature,
+                message
+            )
+        )
+
+        con.commit()
+        con.close()
+
+        return jsonify(
+            answer=answer
+        )
+
     except Exception as e:
-        return jsonify(error=str(e)), 500
+
+        print("CHAT ERROR:", e)
+
+        return jsonify(
+            error="AI request failed: " + str(e)
+        ), 500
+
+
+# ---------------- QUIZ ----------------
 
 @app.post("/quiz")
 def quiz():
-    if not current_user(): return jsonify(error="Please login first."), 401
-    data = request.json
-    topic = data.get("topic","Vocabulary")
-    con = db()
-    user = con.execute("SELECT language,level FROM users WHERE id=?", (current_user(),)).fetchone()
-    con.close()
-    prompt = f"""Create exactly 5 multiple-choice questions for a language learner.
-Target language: {user['language']}; Level: {user['level']}; Topic: {topic}.
-Return ONLY valid JSON array. Each item must have:
-question, options (array of 4 strings), answer (0-3), explanation."""
+
+    data = request.get_json() or {}
+
+    topic = data.get(
+        "topic",
+        "Vocabulary and Grammar"
+    )
+
+    language = data.get(
+        "language",
+        "English"
+    )
+
+    level = data.get(
+        "level",
+        "Beginner"
+    )
+
+    prompt = f"""
+Create exactly 5 multiple-choice questions
+for a language learner.
+
+Target language: {language}
+
+Student level: {level}
+
+Topic: {topic}
+
+Return ONLY valid JSON.
+
+Format:
+
+[
+  {{
+    "question": "Question",
+    "options": [
+      "Option 1",
+      "Option 2",
+      "Option 3",
+      "Option 4"
+    ],
+    "answer": 0,
+    "explanation": "Short explanation"
+  }}
+]
+
+answer must be a number from 0 to 3.
+"""
+
     try:
+
         text = ask_ai(prompt).strip()
+
+        # Remove markdown JSON code block if Gemini adds it
         if text.startswith("```"):
-            text = text.replace("```json","").replace("```","").strip()
-        import json
+            text = (
+                text
+                .replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
+
         questions = json.loads(text)
-        return jsonify(questions=questions)
+
+        return jsonify(
+            questions=questions
+        )
+
     except Exception as e:
-        return jsonify(error="Quiz generation failed: " + str(e)), 500
+
+        print("QUIZ ERROR:", e)
+
+        return jsonify(
+            error="Quiz generation failed: " + str(e)
+        ), 500
+
+
+# ---------------- QUIZ SCORE ----------------
 
 @app.post("/quiz/score")
 def quiz_score():
-    if not current_user(): return jsonify(error="Login required."), 401
-    data = request.json
-    score, total, topic = int(data["score"]), int(data["total"]), data.get("topic","Quiz")
+
+    data = request.get_json() or {}
+
+    score = int(
+        data.get("score", 0)
+    )
+
+    total = int(
+        data.get("total", 0)
+    )
+
+    topic = data.get(
+        "topic",
+        "Vocabulary and Grammar"
+    )
+
+    language = data.get(
+        "language",
+        "English"
+    )
+
+    level = data.get(
+        "level",
+        "Beginner"
+    )
+
     con = db()
-    con.execute("INSERT INTO quiz_scores(user_id,score,total,topic) VALUES(?,?,?,?)",
-                (current_user(),score,total,topic))
-    con.commit(); con.close()
-    return jsonify(ok=True)
+
+    con.execute(
+        """
+        INSERT INTO quiz_scores
+        (language, level, score, total, topic)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            language,
+            level,
+            score,
+            total,
+            topic
+        )
+    )
+
+    con.commit()
+    con.close()
+
+    return jsonify(
+        ok=True
+    )
+
+
+# ---------------- VOCABULARY ----------------
 
 @app.post("/vocabulary")
 def vocabulary():
-    if not current_user(): return jsonify(error="Login required."), 401
-    data = request.json
+
+    data = request.get_json() or {}
+
+    language = data.get(
+        "language",
+        "English"
+    )
+
+    level = data.get(
+        "level",
+        "Beginner"
+    )
+
+    word = data.get(
+        "word",
+        ""
+    )
+
+    meaning = data.get(
+        "meaning",
+        ""
+    )
+
+    example = data.get(
+        "example",
+        ""
+    )
+
+    if not word or not meaning:
+
+        return jsonify(
+            error="Word and meaning are required."
+        ), 400
+
     con = db()
-    con.execute("INSERT INTO vocabulary(user_id,word,meaning,example) VALUES(?,?,?,?)",
-                (current_user(), data["word"], data["meaning"], data.get("example","")))
-    con.commit(); con.close()
-    return jsonify(ok=True)
+
+    con.execute(
+        """
+        INSERT INTO vocabulary
+        (language, level, word, meaning, example)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            language,
+            level,
+            word,
+            meaning,
+            example
+        )
+    )
+
+    con.commit()
+    con.close()
+
+    return jsonify(
+        ok=True
+    )
+
+
+# ---------------- PROGRESS ----------------
 
 @app.get("/progress")
 def progress():
-    if not current_user(): return jsonify(error="Login required."), 401
+
     con = db()
-    uid = current_user()
-    activities = con.execute("SELECT feature,COUNT(*) n FROM activities WHERE user_id=? GROUP BY feature",(uid,)).fetchall()
-    scores = con.execute("SELECT score,total,topic,created_at FROM quiz_scores WHERE user_id=? ORDER BY id DESC LIMIT 10",(uid,)).fetchall()
-    words = con.execute("SELECT word,meaning,example,learned FROM vocabulary WHERE user_id=? ORDER BY id DESC LIMIT 20",(uid,)).fetchall()
+
+    activities = con.execute(
+        """
+        SELECT feature,
+               COUNT(*) AS n
+        FROM activities
+        GROUP BY feature
+        ORDER BY n DESC
+        """
+    ).fetchall()
+
+    scores = con.execute(
+        """
+        SELECT language,
+               level,
+               score,
+               total,
+               topic,
+               created_at
+        FROM quiz_scores
+        ORDER BY id DESC
+        LIMIT 10
+        """
+    ).fetchall()
+
+    words = con.execute(
+        """
+        SELECT language,
+               level,
+               word,
+               meaning,
+               example,
+               learned
+        FROM vocabulary
+        ORDER BY id DESC
+        LIMIT 20
+        """
+    ).fetchall()
+
     con.close()
-    return jsonify(activities=[dict(x) for x in activities],
-                   scores=[dict(x) for x in scores],
-                   vocabulary=[dict(x) for x in words])
+
+    return jsonify(
+        activities=[
+            dict(x)
+            for x in activities
+        ],
+
+        scores=[
+            dict(x)
+            for x in scores
+        ],
+
+        vocabulary=[
+            dict(x)
+            for x in words
+        ]
+    )
+
+
+# ---------------- RUN APP ----------------
 
 if __name__ == "__main__":
+
     init_db()
-    app.run(debug=True)
+
+    app.run(
+        debug=True
+    )
+````
