@@ -1,67 +1,125 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
 <title>Language Learning AI</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+<link rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
+
 <div class="app">
+
 <header>
-  <div><h1>🌐 Language Learning AI</h1><p>Learn • Practice • Improve</p></div>
-  <div id="authArea"><button onclick="openAuth()">Login / Register</button></div>
+    <div>
+        <h1>🌐 Language Learning AI</h1>
+        <p>Learn • Practice • Improve</p>
+    </div>
 </header>
 
-<section id="authPanel" class="panel hidden">
-  <h2>🔐 Student Account</h2>
-  <input id="authUser" placeholder="Username">
-  <input id="authPass" type="password" placeholder="Password">
-  <button onclick="register()">Register</button>
-  <button onclick="login()">Login</button>
-  <p id="authMsg"></p>
+
+<!-- Learning Profile -->
+
+<section id="profilePanel" class="panel">
+
+    <h2>🎯 Learning Profile</h2>
+
+    <select id="language">
+
+        <option value="English">English</option>
+        <option value="Tamil">Tamil</option>
+        <option value="Hindi">Hindi</option>
+        <option value="Malayalam">Malayalam</option>
+        <option value="Telugu">Telugu</option>
+        <option value="Kannada">Kannada</option>
+
+    </select>
+
+
+    <select id="level">
+
+        <option value="Beginner">Beginner</option>
+        <option value="Intermediate">Intermediate</option>
+        <option value="Advanced">Advanced</option>
+
+    </select>
+
+
+    <button onclick="saveProfile()">
+        Save Profile
+    </button>
+
 </section>
 
-<section id="profilePanel" class="panel hidden">
-  <h2>🎯 Learning Profile</h2>
-  <select id="language">
-    <option>English</option><option>Tamil</option><option>Hindi</option>
-    <option>Malayalam</option><option>Telugu</option><option>Kannada</option>
-  </select>
-  <select id="level">
-    <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
-  </select>
-  <button onclick="saveProfile()">Save Profile</button>
-  <button onclick="logout()">Logout</button>
-</section>
 
 <main>
+
+<!-- Feature Toolbar -->
+
 <section class="toolbar">
-  <button onclick="setFeature('Conversation')">💬 Conversation</button>
-  <button onclick="setFeature('Vocabulary')">📖 Vocabulary</button>
-  <button onclick="setFeature('Grammar')">📝 Grammar</button>
-  <button onclick="setFeature('Translation')">🌍 Translation</button>
-  <button onclick="setFeature('Pronunciation')">🔊 Pronunciation</button>
-  <button onclick="setFeature('Lesson')">📚 Lesson</button>
-  <button onclick="loadQuiz()">🧠 Quiz</button>
-  <button onclick="loadProgress()">📊 Progress</button>
+
+    <button onclick="setFeature('Conversation')">
+        💬 Conversation
+    </button>
+
+    <button onclick="setFeature('Vocabulary')">
+        📖 Vocabulary
+    </button>
+
+    <button onclick="setFeature('Grammar')">
+        📝 Grammar
+    </button>
+
+    <button onclick="setFeature('Translation')">
+        🌍 Translation
+    </button>
+
+    <button onclick="setFeature('Pronunciation')">
+        🔊 Pronunciation
+    </button>
+
+    <button onclick="setFeature('Lesson')">
+        📚 Lesson
+    </button>
+
+    <button onclick="loadQuiz()">
+        🧠 Quiz
+    </button>
+
+    <button onclick="loadProgress()">
+        📊 Progress
+    </button>
+
 </section>
 
-<div class="status">Current mode: <b id="feature">Conversation</b></div>
-<section id="chatbox" class="chatbox">
-  <div class="bot">🤖 Hello! Login and choose your language + level to start learning.</div>
-</section>
 
-<section class="inputbar">
-  <input id="message" placeholder="Type your question..." onkeydown="if(event.key==='Enter')sendMessage()">
-  <button onclick="startVoice()">🎤</button>
-  <button onclick="sendMessage()">➤</button>
-</section>
+<!-- Current Feature -->
 
-<section id="quizPanel" class="panel hidden"></section>
-<section id="progressPanel" class="panel hidden"></section>
-</main>
+<div class="status">
+
+    Current mode:
+    <b id="feature">Conversation</b>
+
 </div>
-<script src="{{ url_for('static', filename='script.js') }}"></script>
-</body>
-</html>
+
+
+<!-- Chat -->
+
+<section id="chatbox" class="chatbox">
+
+    <div class="bot">
+        🤖 Hello! Choose your language and level,
+        then start learning.
+    </div>
+
+</section>
+
+
+<!-- Message Input
+```
