@@ -1,11 +1,37 @@
 let currentFeature="Conversation";
 let quizData=[];
+async function api(url, body = null) {
+  const options = body
+    ? {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      }
+    : {};
 
-async function api(url,body=null){
-  const o=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};
-  const r=await fetch(url,o); const d=await r.json();
-  if(!r.ok) throw new Error(d.error||"Request failed"); return d;
+  const response = await fetch(url, options);
+
+  const text = await response.text();
+
+  let data;
+
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    console.error("Server returned:", text);
+    throw new Error("Server returned HTML instead of JSON. Check Flask route.");
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || "Request failed");
+  }
+
+  return data;
 }
+
+
 function openAuth(){document.getElementById("authPanel").classList.toggle("hidden")}
 function setFeature(f){currentFeature=f;document.getElementById("feature").innerText=f;addBot("🤖 "+f+" mode selected.")}
 function addUser(t){const d=document.createElement("div");d.className="user";d.innerText="👤 "+t;chatbox.appendChild(d);chatbox.scrollTop=chatbox.scrollHeight}
