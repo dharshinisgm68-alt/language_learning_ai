@@ -1,89 +1,545 @@
-let currentFeature="Conversation";
-let quizData=[];
+```javascript
+let currentFeature = "Conversation";
+let quizData = [];
+
+const chatbox = document.getElementById("chatbox");
+const quizPanel = document.getElementById("quizPanel");
+const progressPanel = document.getElementById("progressPanel");
+const messageInput = document.getElementById("message");
+const language = document.getElementById("language");
+const level = document.getElementById("level");
+
+
+/* =========================
+   API FUNCTION
+========================= */
+
 async function api(url, body = null) {
-  const options = body
-    ? {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      }
-    : {};
 
-  const response = await fetch(url, options);
+    const options = body
+        ? {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
+        }
+        : {};
 
-  const text = await response.text();
+    const response = await fetch(url, options);
 
-  let data;
+    const text = await response.text();
 
-  try {
-    data = JSON.parse(text);
-  } catch (error) {
-    console.error("Server returned:", text);
-    throw new Error("Server returned HTML instead of JSON. Check Flask route.");
-  }
+    let data;
 
-  if (!response.ok) {
-    throw new Error(data.error || "Request failed");
-  }
+    try {
+        data = JSON.parse(text);
+    }
+    catch (error) {
 
-  return data;
+        console.error("Server response:", text);
+
+        throw new Error(
+            "Server returned HTML instead of JSON. Check Flask server."
+        );
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data.error || "Request failed"
+        );
+    }
+
+    return data;
 }
 
 
-function openAuth(){document.getElementById("authPanel").classList.toggle("hidden")}
-function setFeature(f){currentFeature=f;document.getElementById("feature").innerText=f;addBot("🤖 "+f+" mode selected.")}
-function addUser(t){const d=document.createElement("div");d.className="user";d.innerText="👤 "+t;chatbox.appendChild(d);chatbox.scrollTop=chatbox.scrollHeight}
-function addBot(t){const d=document.createElement("div");d.className="bot";d.innerText="🤖 "+t;chatbox.appendChild(d);chatbox.scrollTop=chatbox.scrollHeight}
-const chatbox=document.getElementById("chatbox");
+/* =========================
+   FEATURE
+========================= */
 
-async function sendMessage(){
-  const i=document.getElementById("message"),m=i.value.trim(); if(!m)return;
-  addUser(m);i.value="";addBot("Thinking...");
-  try{const d=await api("/chat",{message:m,feature:currentFeature});chatbox.lastElementChild.remove();addBot(d.answer);speak(d.answer)}
-  catch(e){chatbox.lastElementChild.remove();addBot("❌ "+e.message)}
-}
-function speak(text){if("speechSynthesis"in window){let u=new SpeechSynthesisUtterance(text);u.lang="en-US";speechSynthesis.speak(u)}}
-function startVoice(){
-  const R=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!R){alert("Voice recognition is not supported. Use Chrome.");return}
-  const r=new R();r.lang="en-US";r.start();r.onresult=e=>document.getElementById("message").value=e.results[0][0].transcript;
-}
-async function register(){try{await api("/register",{username:authUser.value,password:authPass.value});authMsg.innerText="Registered successfully!";loadMe()}catch(e){authMsg.innerText=e.message}}
-async function login(){try{await api("/login",{username:authUser.value,password:authPass.value});authMsg.innerText="Login successful!";loadMe()}catch(e){authMsg.innerText=e.message}}
-async function logout(){await api("/logout");location.reload()}
-async function loadMe(){const d=await api("/me");if(!d.logged_in)return;profilePanel.classList.remove("hidden");language.value=d.language;level.value=d.level;authArea.innerHTML="<b>👋 "+d.username+"</b>";authPanel.classList.add("hidden")}
-async function saveProfile(){try{await api("/profile",{language:language.value,level:level.value});addBot("🎯 Profile saved: "+language.value+" / "+level.value)}catch(e){addBot("❌ "+e.message)}}
+function setFeature(feature) {
 
-async function loadQuiz(){
-  setFeature("Quiz"); quizPanel.classList.remove("hidden");progressPanel.classList.add("hidden");
-  quizPanel.innerHTML="<h2>🧠 Quiz</h2><p>Generating 5 questions...</p>";
-  try{const d=await api("/quiz",{topic:"Vocabulary and Grammar"});quizData=d.questions;renderQuiz()}
-  catch(e){quizPanel.innerHTML="<p>❌ "+e.message+"</p>"}
+    currentFeature = feature;
+
+    document.getElementById("feature").innerText =
+        feature;
+
+    quizPanel.classList.add("hidden");
+    progressPanel.classList.add("hidden");
+
+    addBot(
+        feature + " mode selected."
+    );
 }
-function renderQuiz(){
-  quizPanel.innerHTML="<h2>🧠 Language Quiz</h2>"+quizData.map((q,i)=>`
-  <div class="quiz-card"><b>${i+1}. ${q.question}</b>
-  ${q.options.map((o,j)=>`<label><input type="radio" name="q${i}" value="${j}"> ${o}</label><br>`).join("")}</div>`).join("")+
-  `<button onclick="submitQuiz()">Submit Quiz</button><div id="quizResult"></div>`;
+
+
+/* =========================
+   CHAT DISPLAY
+========================= */
+
+function addUser(text) {
+
+    const div =
+        document.createElement("div");
+
+    div.className = "user";
+
+    div.innerText =
+        "👤 " + text;
+
+    chatbox.appendChild(div);
+
+    chatbox.scrollTop =
+        chatbox.scrollHeight;
 }
-async function submitQuiz(){
-  let score=0;
-  quizData.forEach((q,i)=>{let x=document.querySelector(`input[name=q${i}]:checked`);if(x&&Number(x.value)===Number(q.answer))score++});
-  await api("/quiz/score",{score,total:quizData.length,topic:"Vocabulary and Grammar"});
-  quizResult.innerHTML=`<div class="score">🎯 Score: ${score}/${quizData.length}</div>`;
+
+
+function addBot(text) {
+
+    const div =
+        document.createElement("div");
+
+    div.className = "bot";
+
+    div.innerText =
+        "🤖 " + text;
+
+    chatbox.appendChild(div);
+
+    chatbox.scrollTop =
+        chatbox.scrollHeight;
 }
-async function loadProgress(){
-  progressPanel.classList.remove("hidden");quizPanel.classList.add("hidden");
-  try{const d=await api("/progress");
-    let h="<h2>📊 My Progress</h2><h3>Activities</h3><table><tr><th>Feature</th><th>Count</th></tr>";
-    d.activities.forEach(x=>h+=`<tr><td>${x.feature}</td><td>${x.n}</td></tr>`);
-    h+="</table><h3>Quiz Scores</h3><table><tr><th>Topic</th><th>Score</th><th>Date</th></tr>";
-    d.scores.forEach(x=>h+=`<tr><td>${x.topic}</td><td>${x.score}/${x.total}</td><td>${x.created_at}</td></tr>`);
-    h+="</table><h3>Vocabulary</h3><table><tr><th>Word</th><th>Meaning</th><th>Example</th></tr>";
-    d.vocabulary.forEach(x=>h+=`<tr><td>${x.word}</td><td>${x.meaning}</td><td>${x.example}</td></tr>`);
-    progressPanel.innerHTML=h+"</table>";
-  }catch(e){progressPanel.innerHTML="<p>❌ "+e.message+"</p>"}
+
+
+/* =========================
+   SEND MESSAGE
+========================= */
+
+async function sendMessage() {
+
+    const message =
+        messageInput.value.trim();
+
+    if (!message) {
+        return;
+    }
+
+    const selectedLanguage =
+        language.value;
+
+    const selectedLevel =
+        level.value;
+
+    addUser(message);
+
+    messageInput.value = "";
+
+    addBot("Thinking...");
+
+    try {
+
+        const data = await api(
+            "/chat",
+            {
+                message: message,
+                feature: currentFeature,
+                language: selectedLanguage,
+                level: selectedLevel
+            }
+        );
+
+        chatbox.lastElementChild.remove();
+
+        addBot(data.answer);
+
+        speak(data.answer);
+
+    }
+    catch (error) {
+
+        chatbox.lastElementChild.remove();
+
+        addBot(
+            "❌ " + error.message
+        );
+    }
 }
-loadMe();
+
+
+/* =========================
+   TEXT TO SPEECH
+========================= */
+
+function speak(text) {
+
+    if ("speechSynthesis" in window) {
+
+        const speech =
+            new SpeechSynthesisUtterance(text);
+
+        speech.lang = "en-US";
+
+        window.speechSynthesis.cancel();
+
+        window.speechSynthesis.speak(speech);
+    }
+}
+
+
+/* =========================
+   VOICE INPUT
+========================= */
+
+function startVoice() {
+
+    const Recognition =
+        window.SpeechRecognition ||
+        window.webkitSpeechRecognition;
+
+    if (!Recognition) {
+
+        alert(
+            "Voice recognition is not supported. Use Google Chrome."
+        );
+
+        return;
+    }
+
+    const recognition =
+        new Recognition();
+
+    recognition.lang = "en-US";
+
+    recognition.start();
+
+    recognition.onresult =
+        function (event) {
+
+            messageInput.value =
+                event.results[0][0].transcript;
+        };
+
+    recognition.onerror =
+        function () {
+
+            alert(
+                "Voice recognition failed. Please try again."
+            );
+        };
+}
+
+
+/* =========================
+   SAVE PROFILE
+========================= */
+
+function saveProfile() {
+
+    addBot(
+        "🎯 Profile selected: " +
+        language.value +
+        " / " +
+        level.value
+    );
+}
+
+
+/* =========================
+   QUIZ
+========================= */
+
+async function loadQuiz() {
+
+    setFeature("Quiz");
+
+    quizPanel.classList.remove("hidden");
+
+    progressPanel.classList.add("hidden");
+
+    quizPanel.innerHTML =
+        "<h2>🧠 Quiz</h2>" +
+        "<p>Generating 5 questions...</p>";
+
+    try {
+
+        const data = await api(
+            "/quiz",
+            {
+                topic: "Vocabulary and Grammar",
+                language: language.value,
+                level: level.value
+            }
+        );
+
+        quizData =
+            data.questions;
+
+        renderQuiz();
+
+    }
+    catch (error) {
+
+        quizPanel.innerHTML =
+            "<p>❌ " +
+            error.message +
+            "</p>";
+    }
+}
+
+
+/* =========================
+   RENDER QUIZ
+========================= */
+
+function renderQuiz() {
+
+    let html =
+        "<h2>🧠 Language Quiz</h2>";
+
+    quizData.forEach(
+        function (question, index) {
+
+            html += `
+                <div class="quiz-card">
+
+                    <b>
+                        ${index + 1}.
+                        ${question.question}
+                    </b>
+
+                    <br><br>
+
+                    ${question.options
+                        .map(
+                            function (option, optionIndex) {
+
+                                return `
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            name="q${index}"
+                                            value="${optionIndex}"
+                                        >
+                                        ${option}
+                                    </label>
+                                    <br>
+                                `;
+                            }
+                        )
+                        .join("")}
+
+                </div>
+            `;
+        }
+    );
+
+    html += `
+        <button onclick="submitQuiz()">
+            Submit Quiz
+        </button>
+
+        <div id="quizResult"></div>
+    `;
+
+    quizPanel.innerHTML =
+        html;
+}
+
+
+/* =========================
+   SUBMIT QUIZ
+========================= */
+
+async function submitQuiz() {
+
+    let score = 0;
+
+    quizData.forEach(
+        function (question, index) {
+
+            const selected =
+                document.querySelector(
+                    `input[name="q${index}"]:checked`
+                );
+
+            if (
+                selected &&
+                Number(selected.value) ===
+                Number(question.answer)
+            ) {
+
+                score++;
+            }
+        }
+    );
+
+    try {
+
+        await api(
+            "/quiz/score",
+            {
+                score: score,
+                total: quizData.length,
+                topic: "Vocabulary and Grammar",
+                language: language.value,
+                level: level.value
+            }
+        );
+
+        document.getElementById(
+            "quizResult"
+        ).innerHTML = `
+            <div class="score">
+                🎯 Score:
+                ${score}/${quizData.length}
+            </div>
+        `;
+
+    }
+    catch (error) {
+
+        alert(
+            "❌ " + error.message
+        );
+    }
+}
+
+
+/* =========================
+   PROGRESS
+========================= */
+
+async function loadProgress() {
+
+    progressPanel.classList.remove(
+        "hidden"
+    );
+
+    quizPanel.classList.add(
+        "hidden"
+    );
+
+    try {
+
+        const data =
+            await api("/progress");
+
+        let html = `
+            <h2>📊 My Progress</h2>
+
+            <h3>Activities</h3>
+
+            <table>
+
+                <tr>
+                    <th>Feature</th>
+                    <th>Count</th>
+                </tr>
+        `;
+
+        data.activities.forEach(
+            function (item) {
+
+                html += `
+                    <tr>
+                        <td>${item.feature}</td>
+                        <td>${item.n}</td>
+                    </tr>
+                `;
+            }
+        );
+
+        html += `
+            </table>
+
+            <h3>Quiz Scores</h3>
+
+            <table>
+
+                <tr>
+                    <th>Language</th>
+                    <th>Level</th>
+                    <th>Score</th>
+                    <th>Topic</th>
+                    <th>Date</th>
+                </tr>
+        `;
+
+        data.scores.forEach(
+            function (item) {
+
+                html += `
+                    <tr>
+                        <td>${item.language}</td>
+                        <td>${item.level}</td>
+                        <td>
+                            ${item.score}/${item.total}
+                        </td>
+                        <td>${item.topic}</td>
+                        <td>${item.created_at}</td>
+                    </tr>
+                `;
+            }
+        );
+
+        html += `
+            </table>
+
+            <h3>Vocabulary</h3>
+
+            <table>
+
+                <tr>
+                    <th>Language</th>
+                    <th>Word</th>
+                    <th>Meaning</th>
+                    <th>Example</th>
+                </tr>
+        `;
+
+        data.vocabulary.forEach(
+            function (item) {
+
+                html += `
+                    <tr>
+                        <td>${item.language}</td>
+                        <td>${item.word}</td>
+                        <td>${item.meaning}</td>
+                        <td>${item.example}</td>
+                    </tr>
+                `;
+            }
+        );
+
+        html += "</table>";
+
+        progressPanel.innerHTML =
+            html;
+
+    }
+    catch (error) {
+
+        progressPanel.innerHTML =
+            "<p>❌ " +
+            error.message +
+            "</p>";
+    }
+}
+
+
+/* =========================
+   ENTER KEY
+========================= */
+
+messageInput.addEventListener(
+    "keydown",
+    function (event) {
+
+        if (event.key === "Enter") {
+
+            sendMessage();
+        }
+    }
+);
+```
